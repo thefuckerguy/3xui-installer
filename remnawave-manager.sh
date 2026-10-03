@@ -6,7 +6,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-readonly REMNAWAVE_MANAGER_VERSION="1.0.0"
+readonly REMNAWAVE_MANAGER_VERSION="1.1.0"
 readonly PANEL_DIR="${REMNAWAVE_PANEL_DIR:-/opt/remnawave}"
 readonly NODE_DIR="${REMNAWAVE_NODE_DIR:-/opt/remnanode}"
 readonly CADDY_DIR="${REMNAWAVE_CADDY_DIR:-${PANEL_DIR}/caddy}"
@@ -16,6 +16,15 @@ readonly PANEL_COMPOSE_URL="https://raw.githubusercontent.com/remnawave/backend/
 readonly PANEL_ENV_URL="https://raw.githubusercontent.com/remnawave/backend/refs/heads/main/.env.sample"
 readonly TEMPLATE_INDEX_URL="https://raw.githubusercontent.com/remnawave/templates/refs/heads/main/xray-core-templates-list.json"
 readonly OPENAPI_URL="https://cdn.docs.rw/docs/openapi.json"
+readonly WEB_APP_PATH="/usr/local/lib/3xui-installer/remnawave-web.py"
+readonly WEB_APP_VERSION="2.2.0"
+readonly WEB_APP_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/remnawave-web.py"
+readonly WEB_APP_CHECKSUM_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/remnawave-web.py.sha256"
+readonly WEB_SERVICE_FILE="/etc/systemd/system/remnawave-node-web.service"
+readonly WEB_ENV_FILE="${STATE_DIR}/web.env"
+readonly WEB_API_TOKEN_FILE="${STATE_DIR}/web-api-token"
+readonly WEB_STATE_DIR="/var/lib/remnawave-web"
+readonly WEB_USER="remnawave-web"
 
 ACTION="manage"
 PANEL_DOMAIN="${REMNAWAVE_PANEL_DOMAIN:-}"
@@ -28,6 +37,8 @@ PROFILE_NAME="${REMNAWAVE_PROFILE_NAME:-Managed-Profile}"
 NODE_NAME="${REMNAWAVE_NODE_NAME:-}"
 NODE_ADDRESS="${REMNAWAVE_NODE_ADDRESS:-}"
 NODE_PORT="${REMNAWAVE_NODE_PORT:-2222}"
+WEB_PORT="${REMNAWAVE_WEB_PORT:-8787}"
+WEB_API_TOKEN="${REMNAWAVE_API_TOKEN:-}"
 SELECTED_TEMPLATE_NAME=""
 
 info() { printf 'INFO: %s\n' "$*"; }
@@ -55,12 +66,17 @@ Commands:
   update              Pull and recreate official Panel/Caddy containers.
   profile             Download an official Remnawave Xray template for UI import.
   configure           Create admin/login, Config Profile, node, and Node Compose bundle.
+  web-install         Install/start the local node provisioning web console.
+  web-url             Print the SSH tunnel command and authenticated local URL.
+  web-status          Show web console service status.
+  web-stop            Stop the web console service.
   node-guide          Show the safe Panel -> Node creation workflow.
   node-install FILE   Install Panel-generated docker-compose.yml on this node server.
   help                Show this help.
 
 Non-interactive install requires REMNAWAVE_PANEL_DOMAIN.
 Node firewall restriction can use REMNAWAVE_PANEL_SOURCE_CIDR (an IP or CIDR).
+The web console binds only to 127.0.0.1 and must be opened through an SSH tunnel.
 EOF
 }
 
@@ -392,12 +408,17 @@ fetch_official_template() {
 }
 
 api_request() {
-    local method="$1" path="$2" token="$3" payload_file="$4" output_file="$5" status
+    local method="$1" path="$2" token="$3" payload_file="$4" output_file="$5" status header_file
     local -a args
-    args=(-sS -o "$output_file" -w '%{http_code}' -X "$method" "http://127.0.0.1:3000${path}" -H 'Accept: application/json')
-    [[ -z "$token" ]] || args+=(-H "Authorization: Bearer ${token}")
+    [[ -n "${TMP_DIR:-}" && -d "$TMP_DIR" ]] || TMP_DIR="$(mktemp -d /tmp/remnawave-api.XXXXXX)"
+    header_file="$(mktemp "${TMP_DIR}/headers.XXXXXX")"
+    printf 'Accept: application/json\n' >"$header_file"
+    [[ -z "$token" ]] || printf 'Authorization: Bearer %s\n' "$token" >>"$header_file"
+    chmod 600 "$header_file"
+    args=(-sS -o "$output_file" -w '%{http_code}' -X "$method" "http://127.0.0.1:3000${path}" -H "@${header_file}")
     if [[ -n "$payload_file" ]]; then args+=(-H 'Content-Type: application/json' --data-binary "@${payload_file}"); fi
-    status="$(curl "${args[@]}")" || die "API request failed: ${method} ${path}"
+    status="$(curl "${args[@]}")" || { rm -f -- "$header_file"; die "API request failed: ${method} ${path}"; }
+    rm -f -- "$header_file"
     printf '%s' "$status"
 }
 
@@ -507,6 +528,238 @@ configure_profile_and_node() {
     printf 'Назначьте пользователей Internal Squad "%s", иначе его inbound не попадёт в их подписки.\n' "$squad_name"
 }
 
+file_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        die "sha256sum or shasum is required"
+    fi
+}
+
+resolve_web_companion() {
+    local candidate staged checksum_file expected actual candidate_version
+    for candidate in \
+        "$(dirname -- "${BASH_SOURCE[0]}")/remnawave-web.py" \
+        "$WEB_APP_PATH"; do
+        [[ -r "$candidate" ]] || continue
+        candidate_version="$(sed -n 's/^APP_VERSION = "\([^"]*\)"$/\1/p' "$candidate" | head -1)"
+        [[ "$candidate_version" == "$WEB_APP_VERSION" ]] || continue
+        python3 -m py_compile "$candidate" || die "Local remnawave-web.py failed Python syntax validation"
+        printf '%s' "$candidate"
+        return 0
+    done
+
+    [[ -n "${TMP_DIR:-}" && -d "$TMP_DIR" ]] || TMP_DIR="$(mktemp -d /tmp/remnawave-web.XXXXXX)"
+    staged="${TMP_DIR}/remnawave-web.py"
+    checksum_file="${TMP_DIR}/remnawave-web.py.sha256"
+    curl -fsSL --proto '=https' --tlsv1.2 "$WEB_APP_URL" -o "$staged" || die "Failed to download remnawave-web.py"
+    curl -fsSL --proto '=https' --tlsv1.2 "$WEB_APP_CHECKSUM_URL" -o "$checksum_file" || die "Failed to download remnawave-web.py checksum"
+    expected="$(awk '$2 == "remnawave-web.py" || $2 == "*remnawave-web.py" {print $1; exit}' "$checksum_file")"
+    [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || die "Published remnawave-web.py checksum has an invalid format"
+    actual="$(file_sha256 "$staged")"
+    [[ "$actual" == "$expected" ]] || die "remnawave-web.py checksum mismatch"
+    candidate_version="$(sed -n 's/^APP_VERSION = "\([^"]*\)"$/\1/p' "$staged" | head -1)"
+    [[ "$candidate_version" == "$WEB_APP_VERSION" ]] || die "Downloaded remnawave-web.py has an unexpected version"
+    python3 -m py_compile "$staged" || die "Downloaded remnawave-web.py failed Python syntax validation"
+    printf '%s' "$staged"
+}
+
+validate_web_openapi() {
+    local openapi_file="${TMP_DIR}/openapi-web.json"
+    curl -fsSL --proto '=https' --tlsv1.2 "$OPENAPI_URL" -o "$openapi_file"
+    jq -e '
+        .paths["/api/auth/login"].post and
+        .paths["/api/tokens"].post and
+        .paths["/api/config-profiles"].get and
+        .paths["/api/config-profiles"].post and
+        .paths["/api/config-profiles/{uuid}"].delete and
+        .paths["/api/internal-squads"].post and
+        .paths["/api/internal-squads/{uuid}"].delete and
+        .paths["/api/system/tools/x25519/generate"].get and
+        .paths["/api/keygen"].get and
+        .paths["/api/nodes"].get and
+        .paths["/api/nodes"].post and
+        .paths["/api/nodes/{uuid}"].delete and
+        .paths["/api/hosts"].post and
+        .paths["/api/hosts/{uuid}"].delete and
+        (.components.schemas.LoginBodyDto.required | contains(["username", "password"])) and
+        (.components.schemas.CreateApiTokenBodyDto.required | contains(["name", "expiresInDays"])) and
+        (.components.schemas.CreateApiTokenResponseDto.properties.response.required | contains(["token"])) and
+        (.components.schemas.CreateConfigProfileBodyDto.required | contains(["name", "config"])) and
+        (.components.schemas.CreateConfigProfileResponseDto.properties.response.required | contains(["uuid", "inbounds"])) and
+        (.components.schemas.CreateInternalSquadBodyDto.required | contains(["name", "inbounds"])) and
+        (.components.schemas.CreateNodeBodyDto.required | contains(["name", "address", "configProfile"])) and
+        (.components.schemas.CreateNodeBodyDto.properties.configProfile.required | contains(["activeConfigProfileUuid", "activeInbounds"])) and
+        (.components.schemas.CreateHostBodyDto.required | contains(["inbound", "remark", "address", "port"])) and
+        (.components.schemas.CreateHostBodyDto.properties.nodes.type == "array") and
+        (.components.schemas.GenerateX25519ResponseDto.properties.response.required | contains(["keypairs"])) and
+        (.components.schemas.GetNodeSecretKeyResponseDto.properties.response.required | contains(["secretKey"])) and
+        (.components.schemas.GetNodesResponseDto.properties.response.type == "array")
+    ' "$openapi_file" >/dev/null || die "Live Remnawave OpenAPI is incompatible with the node web console"
+}
+
+validate_web_api_token() {
+    local token="$1" response_file="${TMP_DIR}/token-check.json" status
+    status="$(api_request GET /api/config-profiles "$token" '' "$response_file")"
+    [[ "$status" == 200 ]] || return 1
+    jq -e '.response.configProfiles | type == "array"' "$response_file" >/dev/null 2>&1
+}
+
+obtain_web_api_token() {
+    local username="${REMNAWAVE_ADMIN_USERNAME:-}" password="${REMNAWAVE_ADMIN_PASSWORD:-}"
+    local auth_payload response_file token_payload status login_token
+    if [[ -n "$WEB_API_TOKEN" ]]; then
+        validate_web_api_token "$WEB_API_TOKEN" || die "REMNAWAVE_API_TOKEN is invalid or lacks Config Profiles access"
+        return 0
+    fi
+    interactive_mode || die "Set REMNAWAVE_API_TOKEN for non-interactive web-install"
+    prompt_line username "Логин Remnawave super-admin" "$username"
+    prompt_secret password "Пароль Remnawave super-admin (не сохраняется)"
+    [[ -n "$username" && -n "$password" ]] || die "Remnawave credentials are required"
+
+    auth_payload="${TMP_DIR}/web-auth.json"
+    response_file="${TMP_DIR}/web-auth-response.json"
+    jq -n --arg username "$username" --arg password "$password" '{username:$username,password:$password}' >"$auth_payload"
+    status="$(api_request POST /api/auth/login '' "$auth_payload" "$response_file")"
+    password=""; REMNAWAVE_ADMIN_PASSWORD=""
+    [[ "$status" == 200 ]] || die "Remnawave admin login failed (HTTP ${status})"
+    login_token="$(jq -er '.response.accessToken | strings | select(length > 20)' "$response_file")" || die "Login response has no accessToken"
+
+    token_payload="${TMP_DIR}/web-token.json"
+    response_file="${TMP_DIR}/web-token-response.json"
+    jq -n --arg name "node-web-$(date +%Y%m%d-%H%M%S)" '{name:$name,expiresInDays:3650,scopes:["*"]}' >"$token_payload"
+    status="$(api_request POST /api/tokens "$login_token" "$token_payload" "$response_file")"
+    login_token=""
+    [[ "$status" == 201 ]] || die "Could not create a dedicated Remnawave API token (HTTP ${status})"
+    WEB_API_TOKEN="$(jq -er '.response.token | strings | select(length > 20)' "$response_file")" || die "Token response has no token"
+    validate_web_api_token "$WEB_API_TOKEN" || die "Created API token failed validation"
+}
+
+detect_panel_source_cidr() {
+    local detected="${PANEL_SOURCE_CIDR:-}"
+    if [[ -z "$detected" ]]; then
+        detected="$(curl -fsS4 --connect-timeout 8 --max-time 15 https://api.ipify.org 2>/dev/null | tr -d '[:space:]' || true)"
+    fi
+    if [[ "$detected" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then detected="${detected}/32"; fi
+    [[ "$detected" =~ ^[0-9a-fA-F:.]+/[0-9]{1,3}$ ]] || \
+        die "Set REMNAWAVE_PANEL_SOURCE_CIDR to the public Panel IP/CIDR"
+    PANEL_SOURCE_CIDR="$detected"
+}
+
+write_web_service() {
+    cat >"$WEB_SERVICE_FILE" <<EOF
+[Unit]
+Description=Local Remnawave node provisioning console
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${WEB_USER}
+Group=${WEB_USER}
+EnvironmentFile=${WEB_ENV_FILE}
+ExecStart=/usr/bin/python3 ${WEB_APP_PATH}
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=${WEB_STATE_DIR}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    chmod 644 "$WEB_SERVICE_FILE"
+}
+
+web_console_url() {
+    local access_token panel_host
+    [[ -r "$WEB_ENV_FILE" ]] || die "Web console is not installed; run web-install"
+    access_token="$(sed -n 's/^REMNAWAVE_WEB_ACCESS_TOKEN=//p' "$WEB_ENV_FILE" | head -1)"
+    WEB_PORT="$(sed -n 's/^REMNAWAVE_WEB_PORT=//p' "$WEB_ENV_FILE" | head -1)"
+    [[ "$access_token" =~ ^[a-fA-F0-9]{64}$ ]] || die "Stored web access token is invalid"
+    [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || die "Stored web port is invalid"
+    load_state
+    panel_host="${PANEL_DOMAIN:-PANEL_SERVER_IP}"
+    printf 'SSH tunnel (run on your computer):\n'
+    printf '  ssh -N -L %s:127.0.0.1:%s root@%s\n\n' "$WEB_PORT" "$WEB_PORT" "$panel_host"
+    printf 'Then open:\n'
+    printf '  http://127.0.0.1:%s/?token=%s\n' "$WEB_PORT" "$access_token"
+}
+
+install_web_console() {
+    local source_file access_token csrf_token
+    curl -fsS http://127.0.0.1:3001/health >/dev/null || die "Local Remnawave Panel is not healthy"
+    if [[ ! "$WEB_PORT" =~ ^[0-9]+$ ]] || (( WEB_PORT < 1024 || WEB_PORT > 65535 )); then
+        die "REMNAWAVE_WEB_PORT must be 1024..65535"
+    fi
+    install_base_dependencies
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y python3 openssh-client sshpass
+    else
+        require_commands python3 ssh ssh-keygen ssh-keyscan sshpass
+    fi
+    TMP_DIR="$(mktemp -d /tmp/remnawave-web-install.XXXXXX)"
+    validate_web_openapi
+    if [[ -z "$WEB_API_TOKEN" && -r "$WEB_API_TOKEN_FILE" ]]; then
+        WEB_API_TOKEN="$(tr -d '\r\n' <"$WEB_API_TOKEN_FILE")"
+        validate_web_api_token "$WEB_API_TOKEN" || WEB_API_TOKEN=""
+    fi
+    obtain_web_api_token
+    [[ -n "$WEB_API_TOKEN" && "$WEB_API_TOKEN" != *$'\n'* && ${#WEB_API_TOKEN} -le 4096 ]] || die "Remnawave API token has an unsupported format"
+    detect_panel_source_cidr
+    source_file="$(resolve_web_companion)"
+
+    if ! id "$WEB_USER" >/dev/null 2>&1; then
+        useradd --system --home-dir "$WEB_STATE_DIR" --create-home --shell /usr/sbin/nologin "$WEB_USER"
+    fi
+    install -d -o "$WEB_USER" -g "$WEB_USER" -m 700 "$WEB_STATE_DIR"
+    install -d -m 755 "$(dirname -- "$WEB_APP_PATH")"
+    install -m 755 "$source_file" "$WEB_APP_PATH"
+    python3 -m py_compile "$WEB_APP_PATH"
+
+    access_token="$(openssl rand -hex 32)"
+    csrf_token="$(openssl rand -hex 32)"
+    install -d -m 700 "$STATE_DIR"
+    printf '%s\n' "$WEB_API_TOKEN" >"$WEB_API_TOKEN_FILE"
+    chown root:"$WEB_USER" "$WEB_API_TOKEN_FILE"
+    chmod 640 "$WEB_API_TOKEN_FILE"
+    {
+        printf 'REMNAWAVE_API_TOKEN_FILE=%s\n' "$WEB_API_TOKEN_FILE"
+        printf 'REMNAWAVE_WEB_ACCESS_TOKEN=%s\n' "$access_token"
+        printf 'REMNAWAVE_WEB_CSRF_TOKEN=%s\n' "$csrf_token"
+        printf 'REMNAWAVE_PANEL_SOURCE_CIDR=%s\n' "$PANEL_SOURCE_CIDR"
+        printf 'REMNAWAVE_WEB_PORT=%s\n' "$WEB_PORT"
+        printf 'REMNAWAVE_WEB_STATE_DIR=%s\n' "$WEB_STATE_DIR"
+    } >"$WEB_ENV_FILE"
+    chown root:"$WEB_USER" "$WEB_ENV_FILE"
+    chmod 640 "$WEB_ENV_FILE"
+    WEB_API_TOKEN=""; access_token=""; csrf_token=""
+
+    write_web_service
+    systemctl daemon-reload
+    systemctl enable --now remnawave-node-web.service
+    if ! systemctl is-active --quiet remnawave-node-web.service; then
+        systemctl --no-pager --full status remnawave-node-web.service >&2 || true
+        die "Remnawave node web console failed to start"
+    fi
+    ok "Local Remnawave node web console is running on 127.0.0.1:${WEB_PORT}"
+    web_console_url
+}
+
 node_guide() {
     load_state
     cat <<EOF
@@ -572,8 +825,9 @@ management_menu() {
     printf '  3) Обновить контейнеры\n' >/dev/tty
     printf '  4) Выбрать Xray-шаблон для Config Profile/inbound\n' >/dev/tty
     printf '  5) Авто: Config Profile + inbound + нода + Compose-бандл\n' >/dev/tty
-    printf '  6) Инструкция по ручному добавлению ноды\n' >/dev/tty
-    printf '  7) Установить ноду из docker-compose.yml панели\n' >/dev/tty
+    printf '  6) Установить/открыть веб-мастер добавления нод\n' >/dev/tty
+    printf '  7) Инструкция по ручному добавлению ноды\n' >/dev/tty
+    printf '  8) Установить ноду из docker-compose.yml панели\n' >/dev/tty
     printf '  0) Выход\n' >/dev/tty
     prompt_line choice "Выбор" 1
     case "$choice" in
@@ -582,8 +836,9 @@ management_menu() {
         3) ACTION=update ;;
         4) ACTION=profile ;;
         5) ACTION=configure ;;
-        6) ACTION=node-guide ;;
-        7) prompt_line NODE_COMPOSE_FILE "Путь к docker-compose.yml" /root/remnanode-compose.yml; ACTION=node-install ;;
+        6) ACTION=web-install ;;
+        7) ACTION=node-guide ;;
+        8) prompt_line NODE_COMPOSE_FILE "Путь к docker-compose.yml" /root/remnanode-compose.yml; ACTION=node-install ;;
         0) exit 0 ;;
         *) die "Unknown menu choice" ;;
     esac
@@ -601,6 +856,10 @@ parse_args() {
             update) ACTION=update ;;
             profile|inbounds) ACTION=profile ;;
             configure|bootstrap) ACTION=configure ;;
+            web|web-install) ACTION=web-install ;;
+            web-url) ACTION=web-url ;;
+            web-status) ACTION=web-status ;;
+            web-stop) ACTION=web-stop ;;
             node-guide|node) ACTION=node-guide ;;
             node-install)
                 ACTION=node-install
@@ -623,6 +882,10 @@ main() {
         update) update_panel ;;
         profile) download_profile_template ;;
         configure) configure_profile_and_node ;;
+        web-install) install_web_console ;;
+        web-url) web_console_url ;;
+        web-status) systemctl --no-pager --full status remnawave-node-web.service ;;
+        web-stop) systemctl stop remnawave-node-web.service; ok "Remnawave node web console stopped" ;;
         node-guide) node_guide ;;
         node-install) install_node ;;
         *) die "Unknown action: ${ACTION}" ;;

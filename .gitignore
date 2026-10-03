@@ -6,3 +6,5 @@
 _site/
 backups/
 certs/
+__pycache__/
+*.pyc

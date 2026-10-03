@@ -7,7 +7,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-readonly INSTALLER_VERSION="2.1.0"
+readonly INSTALLER_VERSION="2.2.0"
 readonly RESULT_DIR="/root/3x-ui-bootstrap"
 readonly STATE_FILE="${RESULT_DIR}/state.env"
 readonly LOG_FILE="${RESULT_DIR}/install.log"
@@ -25,6 +25,7 @@ readonly SELF_UPDATE_CHECKSUM_URL="https://github.com/thefuckerguy/3xui-installe
 readonly SELF_UPDATE_VERSION_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/VERSION"
 readonly DASHBOARD_FILE="${RESULT_DIR}/dashboard.html"
 readonly REMNAWAVE_INSTALLED_PATH="/usr/local/lib/3xui-installer/remnawave-manager.sh"
+readonly REMNAWAVE_REQUIRED_VERSION="1.1.0"
 readonly REMNAWAVE_DOWNLOAD_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/remnawave-manager.sh"
 readonly REMNAWAVE_CHECKSUM_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/remnawave-manager.sh.sha256"
 
@@ -3125,7 +3126,7 @@ main() {
 
 dispatch_product() {
     local product="${INSTALLER_PRODUCT:-auto}" arg remnawave_script="" choice="" staged="" checksum_file=""
-    local expected_hash="" actual_hash="" rc=0
+    local expected_hash="" actual_hash="" rc=0 companion_version=""
     local -a forwarded=()
     while (( $# > 0 )); do
         arg="$1"
@@ -3158,6 +3159,12 @@ dispatch_product() {
                 "$(dirname -- "${BASH_SOURCE[0]}")/remnawave-manager.sh" \
                 "$REMNAWAVE_INSTALLED_PATH"; do
                 [[ -n "$remnawave_script" && -f "$remnawave_script" ]] || continue
+                if [[ -z "${REMNAWAVE_SCRIPT:-}" || "$remnawave_script" != "$REMNAWAVE_SCRIPT" ]]; then
+                    companion_version="$(sed -n 's/^readonly REMNAWAVE_MANAGER_VERSION="\([^"]*\)"$/\1/p' "$remnawave_script" | head -1)"
+                    if ! valid_installer_version "$companion_version" || version_is_newer "$companion_version" "$REMNAWAVE_REQUIRED_VERSION"; then
+                        continue
+                    fi
+                fi
                 exec bash "$remnawave_script" "${forwarded[@]}"
             done
             command -v curl >/dev/null 2>&1 || die "remnawave-manager.sh is absent and curl is unavailable"

@@ -26,8 +26,11 @@ jobs:
           for script in install-3xui-full.sh remnawave-manager.sh publish-installer.sh; do
             bash -n "$script"
           done
+          python3 -m py_compile remnawave-web.py
+          python3 -m unittest discover -s tests -v
           sha256sum -c install-3xui-full.sh.sha256
           sha256sum -c remnawave-manager.sh.sha256
+          sha256sum -c remnawave-web.py.sha256
       - name: Publish once with all verified assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -40,6 +43,8 @@ jobs:
             install-3xui-full.sh.sha256 \
             remnawave-manager.sh \
             remnawave-manager.sh.sha256 \
+            remnawave-web.py \
+            remnawave-web.py.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --latest \

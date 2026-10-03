@@ -42,6 +42,12 @@ sudo bash install-3xui-full.sh --product remnawave profile
 # автоматизировать Config Profile, inbound, запись ноды и Compose-бандл
 sudo bash install-3xui-full.sh --product remnawave configure
 
+# установить локальный веб-мастер добавления нод
+sudo bash install-3xui-full.sh --product remnawave web-install
+
+# повторно показать команду SSH-туннеля и защищённый URL
+sudo bash install-3xui-full.sh --product remnawave web-url
+
 # шаги создания ноды
 sudo bash install-3xui-full.sh --product remnawave node-guide
 
@@ -52,11 +58,29 @@ sudo REMNAWAVE_PANEL_SOURCE_CIDR=203.0.113.10/32 \
 
 Перед автоматической настройкой скрипт скачивает live OpenAPI с `docs.rw` и проверяет ожидаемые endpoints/обязательные поля. Config Profile создаётся из JSON официального каталога `remnawave/templates`; API payload формируется только после этой проверки. `SECRET_KEY` генерирует панель, а скрипт записывает эквивалентный официальному Node Compose в root-only файл.
 
-Если рядом с основным скриптом нет `remnawave-manager.sh`, выбор Remnawave скачает его и отдельный `.sha256` из последнего GitHub Release, проверит SHA-256 и Bash-синтаксис и только затем запустит/установит companion. Поэтому стандартная безопасная загрузка основного файла также работает для Remnawave.
+Если рядом с основным скриптом нет актуального `remnawave-manager.sh`, выбор Remnawave скачает его и отдельный `.sha256` из последнего GitHub Release, проверит SHA-256 и Bash-синтаксис и только затем запустит/установит companion. Команда `web-install` аналогично загружает `remnawave-web.py` с отдельной контрольной суммой и проверяет Python-синтаксис. Поэтому стандартная безопасная загрузка основного файла также работает для Remnawave.
 
 Команда `configure` работает через локальный API `127.0.0.1:3000`: регистрирует первого admin или входит существующим, создаёт профиль, Internal Squad со всеми inbound и ноду по live OpenAPI-схеме, а затем записывает Compose с `SECRET_KEY` в root-only каталог `/opt/remnawave/node-bundles`. JWT и `SECRET_KEY` не печатаются. После этого администратор должен назначить нужных пользователей этому Internal Squad. Для неинтерактивного запуска задайте `REMNAWAVE_ADMIN_USERNAME`, `REMNAWAVE_ADMIN_PASSWORD`, `REMNAWAVE_PROFILE_NAME`, `REMNAWAVE_NODE_NAME`, `REMNAWAVE_NODE_ADDRESS`, `REMNAWAVE_NODE_PORT` и, при необходимости, `REMNAWAVE_TEMPLATE_NUMBER`.
 
 После импорта Config Profile нужно включить его inbound в `Internal Squad`, затем назначить профиль/инбаунды ноде. Node Port должен быть доступен только с IP панели.
+
+### Веб-мастер нод
+
+`web-install` один раз спрашивает логин и пароль Remnawave super-admin, создаёт отдельный API token на 10 лет, устанавливает systemd-службу и выводит команду SSH-туннеля. Пароль администратора не сохраняется. Служба работает от отдельного системного пользователя, слушает только `127.0.0.1:8787` и защищена случайным access token.
+
+В форме указываются название ноды, IPv4, SSH-порт, root-пароль, код страны и отдельный домен ноды. A-запись домена должна напрямую указывать на IPv4 ноды: это необходимо для trusted TLS у XHTTP, Trojan и Hysteria2. Перед передачей пароля мастер показывает ED25519 fingerprint SSH-сервера и требует его подтверждения.
+
+После подтверждения мастер:
+
+1. передаёт root-пароль `sshpass` через отдельный файловый дескриптор, устанавливает служебный ED25519-ключ и очищает пароль из задания;
+2. проверяет чистую Debian 11+/Ubuntu 22.04+ ноду и свободные порты;
+3. создаёт индивидуальные Config Profile, Internal Squad, Node и пять Hosts через локальный Remnawave API;
+4. устанавливает Docker, Remnawave Node, Nginx SelfSteal через Unix-сокет, Certbot, BBR и UFW;
+5. открывает Node Port `2222/tcp` (или случайный, если `2222` занят) только для публичного IP/CIDR панели и ожидает `isConnected=true`.
+
+Создаются пять inbound: VLESS + REALITY + Vision на `443/tcp`, VLESS + XHTTP + TLS, Trojan + TLS, Shadowsocks 2022 TCP/UDP и Hysteria2 QUIC. Для каждой ноды генерируются отдельные X25519/shortId/Shadowsocks-ключи и случайные порты. При ошибке до запуска удалённой ноды созданные API-объекты удаляются в обратном порядке; после запуска они сохраняются для диагностики.
+
+Веб-мастер не заменяет существующий `/opt/remnanode` и не подходит для обновления уже зарегистрированной ноды. Root-пароль не записывается в файлы или аргументы процессов, но первоначальное подключение всё равно нужно выполнять только после сверки SSH fingerprint.
 
 При запуске без аргументов сначала открывается главное меню. Для новой установки выберите пункт `1 — Установить или настроить 3X-UI`, после чего откроется мастер. Он спросит:
 
@@ -290,4 +314,4 @@ sudo cat /root/3x-ui-bootstrap/failed-inbounds.json
 
 ## Источники совместимости
 
-Реализация сверена с актуальными исходниками проекта: [3X-UI](https://github.com/MHSanaei/3x-ui), [релиз v3.8.5](https://github.com/MHSanaei/3x-ui/releases/tag/v3.8.5), [официальный install.sh](https://github.com/MHSanaei/3x-ui/blob/v3.8.5/install.sh), [OpenAPI v3.8.5](https://github.com/MHSanaei/3x-ui/blob/v3.8.5/docs/public/openapi.json), [Xray-core v26.9.9](https://github.com/XTLS/Xray-core/releases/tag/v26.9.9). Итоговый `client-compatibility.txt` намеренно использует `VERSION DEPENDENT`/`LIMITED`, когда один и тот же UI может работать с разными core или терять поля при импорте.
+Реализация сверена с актуальными исходниками проекта: [3X-UI](https://github.com/MHSanaei/3x-ui), [релиз v3.8.5](https://github.com/MHSanaei/3x-ui/releases/tag/v3.8.5), [официальный install.sh](https://github.com/MHSanaei/3x-ui/blob/v3.8.5/install.sh), [OpenAPI v3.8.5](https://github.com/MHSanaei/3x-ui/blob/v3.8.5/docs/public/openapi.json), [Xray-core v26.9.9](https://github.com/XTLS/Xray-core/releases/tag/v26.9.9), [официальная установка Remnawave Node](https://docs.rw/install/remnawave-node/), [Remnawave OpenAPI](https://docs.rw/api/), [официальные Remnawave templates](https://github.com/remnawave/templates) и учебная SelfSteal/reverse-proxy реализация [eGamesAPI/remnawave-reverse-proxy](https://github.com/eGamesAPI/remnawave-reverse-proxy). Итоговый `client-compatibility.txt` намеренно использует `VERSION DEPENDENT`/`LIMITED`, когда один и тот же UI может работать с разными core или терять поля при импорте.
