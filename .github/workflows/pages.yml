@@ -1,0 +1,42 @@
+name: Publish installer guide
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.repository == 'thefuckerguy/3xui-installer'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build static guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp COMMANDS-3XUI-RU.html _site/index.html
+          cp COMMANDS-3XUI-RU.txt _site/COMMANDS-3XUI-RU.txt
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
