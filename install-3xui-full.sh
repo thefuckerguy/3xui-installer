@@ -7,7 +7,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-readonly INSTALLER_VERSION="2.2.0"
+readonly INSTALLER_VERSION="2.3.0"
 readonly RESULT_DIR="/root/3x-ui-bootstrap"
 readonly STATE_FILE="${RESULT_DIR}/state.env"
 readonly LOG_FILE="${RESULT_DIR}/install.log"
@@ -24,10 +24,6 @@ readonly SELF_UPDATE_URL="https://github.com/thefuckerguy/3xui-installer/release
 readonly SELF_UPDATE_CHECKSUM_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/install-3xui-full.sh.sha256"
 readonly SELF_UPDATE_VERSION_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/VERSION"
 readonly DASHBOARD_FILE="${RESULT_DIR}/dashboard.html"
-readonly REMNAWAVE_INSTALLED_PATH="/usr/local/lib/3xui-installer/remnawave-manager.sh"
-readonly REMNAWAVE_REQUIRED_VERSION="1.1.0"
-readonly REMNAWAVE_DOWNLOAD_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/remnawave-manager.sh"
-readonly REMNAWAVE_CHECKSUM_URL="https://github.com/thefuckerguy/3xui-installer/releases/latest/download/remnawave-manager.sh.sha256"
 
 REGION_PROFILE="${REGION_PROFILE:-RU}"
 XUI_DOMAIN="${XUI_DOMAIN:-}"
@@ -202,11 +198,10 @@ is_false() {
 
 usage() {
     cat <<'EOF'
-3X-UI Universal RU Installer
+3X-UI RU Installer
 
 Usage:
   sudo bash install-3xui-full.sh [command] [--interactive|--non-interactive]
-  sudo bash install-3xui-full.sh --product remnawave [command]
   sudo 3xui-installer [command]
   sudo dns [command]
 
@@ -226,7 +221,6 @@ Commands:
   uninstall           Completely remove 3X-UI and installer-owned configuration.
 
 Options for install/repair/recreate-inbounds:
-  --product PRODUCT   Select 3x-ui or remnawave. Without arguments, a TTY menu asks.
   --interactive      Require and show the installation wizard.
   --non-interactive  Do not ask questions; use environment variables/defaults.
   -h, --help         Show this help.
@@ -727,7 +721,7 @@ save_manager_config() {
 }
 
 install_manager_command() {
-    local source_file="${BASH_SOURCE[0]}" staged="" companion_source=""
+    local source_file="${BASH_SOURCE[0]}" staged=""
     install -d -m 755 "$(dirname "$MANAGER_PATH")"
     if [[ -f "$source_file" ]] && bash -n "$source_file"; then
         if [[ "$(readlink -f "$source_file")" == "$(readlink -f "$MANAGER_PATH" 2>/dev/null || true)" ]]; then
@@ -741,13 +735,6 @@ install_manager_command() {
         bash -n "$staged" || { rm -f -- "$staged"; die "Downloaded manager failed syntax validation"; }
         install -m 700 "$staged" "$MANAGER_PATH"
         rm -f -- "$staged"
-    fi
-    companion_source="$(dirname -- "$source_file")/remnawave-manager.sh"
-    if [[ -f "$companion_source" ]]; then
-        bash -n "$companion_source" || die "Remnawave companion failed syntax validation"
-        install -d -m 755 "$(dirname -- "$REMNAWAVE_INSTALLED_PATH")"
-        install -m 700 "$companion_source" "$REMNAWAVE_INSTALLED_PATH"
-        ok "Remnawave companion installed: ${REMNAWAVE_INSTALLED_PATH}"
     fi
     install_dns_shortcut || true
     ok "Management command installed: ${MANAGER_PATH}"
@@ -3124,94 +3111,6 @@ main() {
     fi
 }
 
-dispatch_product() {
-    local product="${INSTALLER_PRODUCT:-auto}" arg remnawave_script="" choice="" staged="" checksum_file=""
-    local expected_hash="" actual_hash="" rc=0 companion_version=""
-    local -a forwarded=()
-    while (( $# > 0 )); do
-        arg="$1"
-        case "$arg" in
-            --product)
-                (( $# >= 2 )) || die "--product requires 3x-ui or remnawave"
-                product="$2"; shift 2; continue
-                ;;
-            --product=*) product="${arg#*=}" ;;
-            remnawave) product="remnawave" ;;
-            *) forwarded+=("$arg") ;;
-        esac
-        shift
-    done
-    product="$(printf '%s' "$product" | tr '[:upper:]' '[:lower:]')"
-    if [[ "$product" == auto ]]; then
-        if (( ${#forwarded[@]} == 0 )) && tty_available && ! is_true "$INSTALLER_NONINTERACTIVE"; then
-            printf '\nС какой панелью работаем?\n  1) 3X-UI\n  2) Remnawave\n' >/dev/tty
-            prompt_line choice "Выбор" 1
-            case "$choice" in 1) product="3x-ui" ;; 2) product="remnawave" ;; *) die "Unknown product choice" ;; esac
-        else
-            product="3x-ui"
-        fi
-    fi
-    case "$product" in
-        3x-ui|3xui|x-ui) main "${forwarded[@]}" ;;
-        remnawave|remna)
-            for remnawave_script in \
-                "${REMNAWAVE_SCRIPT:-}" \
-                "$(dirname -- "${BASH_SOURCE[0]}")/remnawave-manager.sh" \
-                "$REMNAWAVE_INSTALLED_PATH"; do
-                [[ -n "$remnawave_script" && -f "$remnawave_script" ]] || continue
-                if [[ -z "${REMNAWAVE_SCRIPT:-}" || "$remnawave_script" != "$REMNAWAVE_SCRIPT" ]]; then
-                    companion_version="$(sed -n 's/^readonly REMNAWAVE_MANAGER_VERSION="\([^"]*\)"$/\1/p' "$remnawave_script" | head -1)"
-                    if ! valid_installer_version "$companion_version" || version_is_newer "$companion_version" "$REMNAWAVE_REQUIRED_VERSION"; then
-                        continue
-                    fi
-                fi
-                exec bash "$remnawave_script" "${forwarded[@]}"
-            done
-            command -v curl >/dev/null 2>&1 || die "remnawave-manager.sh is absent and curl is unavailable"
-            staged="$(mktemp /tmp/remnawave-manager.XXXXXX)"
-            checksum_file="$(mktemp /tmp/remnawave-manager-sha256.XXXXXX)"
-            if ! curl -fsSL --proto '=https' --tlsv1.2 "$REMNAWAVE_DOWNLOAD_URL" -o "$staged" || \
-               ! curl -fsSL --proto '=https' --tlsv1.2 "$REMNAWAVE_CHECKSUM_URL" -o "$checksum_file"; then
-                rm -f -- "$staged" "$checksum_file"
-                die "Failed to download the Remnawave companion and its checksum"
-            fi
-            expected_hash="$(awk '$2 == "remnawave-manager.sh" || $2 == "*remnawave-manager.sh" {print $1; exit}' "$checksum_file")"
-            [[ "$expected_hash" =~ ^[a-fA-F0-9]{64}$ ]] || {
-                rm -f -- "$staged" "$checksum_file"
-                die "Published Remnawave checksum has an invalid format"
-            }
-            if command -v sha256sum >/dev/null 2>&1; then
-                actual_hash="$(sha256sum "$staged" | awk '{print $1}')"
-            elif command -v shasum >/dev/null 2>&1; then
-                actual_hash="$(shasum -a 256 "$staged" | awk '{print $1}')"
-            else
-                rm -f -- "$staged" "$checksum_file"
-                die "sha256sum or shasum is required to verify the Remnawave companion"
-            fi
-            [[ "$actual_hash" == "$expected_hash" ]] || {
-                rm -f -- "$staged" "$checksum_file"
-                die "Remnawave companion checksum mismatch"
-            }
-            bash -n "$staged" || {
-                rm -f -- "$staged" "$checksum_file"
-                die "Downloaded Remnawave companion failed Bash syntax validation"
-            }
-            rm -f -- "$checksum_file"
-            chmod 700 "$staged"
-            if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-                install -d -m 755 "$(dirname -- "$REMNAWAVE_INSTALLED_PATH")"
-                install -m 700 "$staged" "$REMNAWAVE_INSTALLED_PATH"
-                rm -f -- "$staged"
-                exec bash "$REMNAWAVE_INSTALLED_PATH" "${forwarded[@]}"
-            fi
-            bash "$staged" "${forwarded[@]}" || rc=$?
-            rm -f -- "$staged"
-            exit "$rc"
-            ;;
-        *) die "INSTALLER_PRODUCT/--product must be 3x-ui or remnawave" ;;
-    esac
-}
-
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-    dispatch_product "$@"
+    main "$@"
 fi

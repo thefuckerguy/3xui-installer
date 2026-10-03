@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a1018">
-  <meta name="description" content="Руководство по 3X-UI Universal Installer 2.1.0: выбор 3X-UI или Remnawave, установка, настройка и управление нодами.">
+  <meta name="description" content="Руководство по 3X-UI Installer 2.3.0: установка, настройка профилей и обслуживание панели.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none';">
-  <title>3X-UI + Remnawave — руководство администратора</title>
+  <title>3X-UI — руководство администратора</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230a1018'/%3E%3Cpath d='M16 18h32L27 32h21L16 48h32' fill='none' stroke='%2349d4b0' stroke-linecap='round' stroke-linejoin='round' stroke-width='6'/%3E%3C/svg%3E">
   <style>
     :root {
@@ -172,9 +172,9 @@
   <a class="skip-link" href="#main">Перейти к руководству</a>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="#top" aria-label="3X-UI и Remnawave — наверх">
+      <a class="brand" href="#top" aria-label="3X-UI — наверх">
         <span class="brand-mark" aria-hidden="true">3X</span>
-        <span>3X-UI · REMNAWAVE</span>
+        <span>3X-UI</span>
       </a>
       <nav class="top-links" aria-label="Основная навигация">
         <a href="#guide">Руководство</a>
@@ -187,17 +187,17 @@
   <main id="main" class="shell">
     <section id="top" class="hero" aria-labelledby="page-title">
       <div class="hero-content">
-        <div class="eyebrow"><span class="live-dot" aria-hidden="true"></span> Универсальный установщик · документация</div>
-        <h1 id="page-title">3X-UI<br>и Remnawave</h1>
-        <p class="hero-intro">Выберите панель при запуске установщика. Здесь собраны команды для установки и обслуживания 3X-UI, а также установки Remnawave, настройки инбаундов и подключения нод.</p>
+        <div class="eyebrow"><span class="live-dot" aria-hidden="true"></span> 3X-UI Installer · документация</div>
+        <h1 id="page-title">3X-UI</h1>
+        <p class="hero-intro">Команды для установки и обслуживания 3X-UI, управления инбаундами, обновления, ремонта и диагностики сервера.</p>
         <div class="hero-meta" aria-label="Сведения о руководстве">
           <span class="pill">Версия<strong id="version">…</strong></span>
-          <span class="pill">3X-UI + Remnawave</span>
+          <span class="pill">Только 3X-UI</span>
           <span class="pill" id="source-name">Источник: COMMANDS-3XUI-RU.txt</span>
           <span class="pill" id="section-count">Загрузка разделов…</span>
         </div>
         <div class="install-card" aria-labelledby="install-label">
-        <div class="install-card-head"><span id="install-label">Быстрый старт · выбор панели при запуске</span><span class="safe-tag">Версия 2.1.0</span></div>
+        <div class="install-card-head"><span id="install-label">Быстрый старт</span><span class="safe-tag">Версия 2.3.0</span></div>
           <div class="command-row">
             <code id="install-command">curl -fsSL https://github.com/thefuckerguy/3xui-installer/releases/latest/download/install-3xui-full.sh -o /tmp/install-3xui-full.sh &amp;&amp; sudo bash /tmp/install-3xui-full.sh</code>
             <button class="copy-button" type="button" data-copy-target="install-command" aria-label="Скопировать команду установки"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 5V3.5A1.5 1.5 0 0 0 9 2H4A1.5 1.5 0 0 0 2.5 3.5V10A1.5 1.5 0 0 0 4 11.5h1" stroke="currentColor" stroke-width="1.4"/></svg><span>Копировать</span></button>
@@ -212,9 +212,9 @@
 
     <div class="section-label">Возможности установщика</div>
     <section class="overview" aria-label="Возможности руководства">
-      <article class="overview-card"><span class="overview-icon" aria-hidden="true">01</span><h2>Две панели</h2><p>3X-UI или Remnawave: выберите продукт в меню либо задайте его явно.</p></article>
-      <article class="overview-card"><span class="overview-icon" aria-hidden="true">02</span><h2>Профили и инбаунды</h2><p>Настройка Config Profile и inbound’ов Remnawave, а также управление инбаундами 3X-UI.</p></article>
-      <article class="overview-card"><span class="overview-icon" aria-hidden="true">03</span><h2>Ноды и обслуживание</h2><p>Регистрация нод Remnawave, установка Node Compose и диагностика серверов.</p></article>
+      <article class="overview-card"><span class="overview-icon" aria-hidden="true">01</span><h2>Автоматическая установка</h2><p>Панель, TLS, база данных и безопасные параметры через один мастер.</p></article>
+      <article class="overview-card"><span class="overview-icon" aria-hidden="true">02</span><h2>Пять профилей</h2><p>VLESS REALITY/XHTTP, Trojan, Shadowsocks 2022 и Hysteria2.</p></article>
+      <article class="overview-card"><span class="overview-icon" aria-hidden="true">03</span><h2>Обслуживание</h2><p>Обновление, ремонт, резервные копии, локальная карточка и диагностика.</p></article>
     </section>
 
     <div class="guide-layout" id="guide">
@@ -231,7 +231,7 @@
     </div>
 
     <footer class="footer">
-      <span>Источник: <a href="./COMMANDS-3XUI-RU.txt" download>КОМАНДЫ-3XUI.txt · версия 2.1.0</a></span>
+      <span>Источник: <a href="./COMMANDS-3XUI-RU.txt" download>КОМАНДЫ-3XUI.txt · версия 2.3.0</a></span>
       <span>Адрес публикации: <a id="publication-link" href="./">https://thefuckerguy.github.io/3xui-installer/</a> · UTF-8</span>
     </footer>
     <p id="copy-status" class="status" role="status" aria-live="polite"></p>

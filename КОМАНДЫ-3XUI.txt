@@ -1,5 +1,5 @@
-3X-UI + REMNAWAVE UNIVERSAL INSTALLER — СПИСОК КОМАНД
-Версия установщика: 2.1.0
+3X-UI INSTALLER — СПИСОК КОМАНД
+Версия установщика: 2.3.0
 Адрес публикации: https://thefuckerguy.github.io/3xui-installer/
 
 ============================================================
@@ -319,77 +319,10 @@ sudo XUI_PORT_START=30000 XUI_PORT_END=39999 bash /tmp/install-3xui-full.sh
 sudo XUI_DOMAIN=vpn.example.com bash /tmp/install-3xui-full.sh
 
 ============================================================
-13. REMNAWAVE: PANEL, INBOUND, INTERNAL SQUAD И НОДЫ
-============================================================
-
-При запуске без аргументов скрипт спрашивает, с какой панелью
-работаем: 3X-UI или Remnawave.
-
-sudo bash /tmp/install-3xui-full.sh
-
-Явно открыть 3X-UI:
-
-sudo bash /tmp/install-3xui-full.sh --product 3x-ui
-
-Явно открыть Remnawave (companion будет скачан и проверен, если его нет рядом):
-
-sudo bash /tmp/install-3xui-full.sh --product remnawave
-
-Установить Remnawave Panel, PostgreSQL, Valkey и Caddy с TLS:
-
-sudo bash /tmp/install-3xui-full.sh --product remnawave install
-
-Неинтерактивная установка Panel + Caddy:
-
-sudo REMNAWAVE_PANEL_DOMAIN=panel.example.com \
-  bash /tmp/install-3xui-full.sh --product remnawave install --non-interactive
-
-Получить официальный Xray-шаблон для Config Profile/inbound:
-
-sudo bash /tmp/install-3xui-full.sh --product remnawave profile
-
-Автоматически создать Config Profile, inbound, Internal Squad, ноду
-и root-only Compose-бандл:
-
-sudo bash /tmp/install-3xui-full.sh --product remnawave configure
-
-Команда configure проверяет live OpenAPI, регистрирует первого
-super-admin или входит существующим, берёт JSON из каталога
-remnawave/templates, добавляет inbound в Internal Squad и записывает
-Compose с SECRET_KEY в /opt/remnawave/node-bundles с правами 600.
-
-Для неинтерактивной configure задайте REMNAWAVE_ADMIN_USERNAME,
-REMNAWAVE_ADMIN_PASSWORD, REMNAWAVE_PROFILE_NAME, REMNAWAVE_NODE_NAME,
-REMNAWAVE_NODE_ADDRESS, REMNAWAVE_NODE_PORT и, при необходимости,
-REMNAWAVE_TEMPLATE_NUMBER.
-
-Инструкция по добавлению ноды:
-
-sudo bash /tmp/install-3xui-full.sh --product remnawave node-guide
-
-На сервере ноды установить Compose-бандл, созданный командой configure:
-
-sudo REMNAWAVE_PANEL_SOURCE_CIDR=PANEL_IP/32 \
-  bash /tmp/remnawave-manager.sh node-install /root/remnanode-compose.yml
-
-После configure назначьте пользователей созданному Internal Squad.
-Node Port должен быть доступен только с IP/CIDR панели. JWT и SECRET_KEY
-не выводятся в терминал.
-
-Показать статус Remnawave:
-
-sudo bash /tmp/install-3xui-full.sh --product remnawave status
-
-Обновить контейнеры Panel и Caddy:
-
-sudo bash /tmp/install-3xui-full.sh --product remnawave update
-
-============================================================
 ВАЖНО
 ============================================================
 
 - Не публикуйте файл /root/3x-ui-bootstrap/result.env: в нём находятся секреты.
-- Не публикуйте /opt/remnawave/.env и файлы из /opt/remnawave/node-bundles.
 - Перед удалением или переустановкой сохраните важные клиентские конфигурации.
 - Repair не должен менять существующие порты и инбаунды.
 - Полное удаление необратимо без резервной копии.
