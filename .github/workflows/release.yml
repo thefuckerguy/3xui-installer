@@ -1,0 +1,47 @@
+name: Publish installer release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: github.repository == 'thefuckerguy/3xui-installer'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$GITHUB_REF_NAME" == "v$(cat VERSION)" ]]
+          grep -Fqx "readonly INSTALLER_VERSION=\"$(cat VERSION)\"" install-3xui-full.sh
+          for script in install-3xui-full.sh remnawave-manager.sh publish-installer.sh; do
+            bash -n "$script"
+          done
+          sha256sum -c install-3xui-full.sh.sha256
+          sha256sum -c remnawave-manager.sh.sha256
+      - name: Publish once with all verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            VERSION \
+            install-3xui-full.sh \
+            install-3xui-full.sh.sha256 \
+            remnawave-manager.sh \
+            remnawave-manager.sh.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --latest \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

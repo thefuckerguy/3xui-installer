@@ -1,0 +1,8 @@
+.DS_Store
+*.log
+*.env
+*.key
+*.pem
+_site/
+backups/
+certs/

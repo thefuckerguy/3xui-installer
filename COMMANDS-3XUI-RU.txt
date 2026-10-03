@@ -1,0 +1,395 @@
+3X-UI + REMNAWAVE UNIVERSAL INSTALLER — СПИСОК КОМАНД
+Версия установщика: 2.1.0
+Адрес публикации: https://thefuckerguy.github.io/3xui-installer/
+
+============================================================
+1. УСТАНОВКА НА НОВОМ ЧИСТОМ СЕРВЕРЕ
+============================================================
+
+Загрузить скрипт и открыть главное меню:
+
+curl -fsSL https://github.com/thefuckerguy/3xui-installer/releases/latest/download/install-3xui-full.sh -o /tmp/install-3xui-full.sh && sudo bash /tmp/install-3xui-full.sh
+
+Безопасная загрузка с проверкой SHA-256:
+
+cd /tmp
+curl -fsSLO https://github.com/thefuckerguy/3xui-installer/releases/latest/download/install-3xui-full.sh
+curl -fsSLO https://github.com/thefuckerguy/3xui-installer/releases/latest/download/install-3xui-full.sh.sha256
+sha256sum -c install-3xui-full.sh.sha256
+sudo bash install-3xui-full.sh
+
+Если проверка SHA-256 завершилась ошибкой, файл запускать нельзя.
+
+В главном меню выберите пункт 1. Затем мастер установки запросит:
+- установку с доменом или по публичному IP;
+- логин и пароль панели;
+- порт и WebBasePath панели;
+- базовое название инбаундов и формат примечаний: полный либо Имя #1, Имя #2, ...;
+- тип базы данных;
+- настройки Fail2ban и BBR.
+
+Новые инбаунды получают независимые случайные свободные порты из максимально широкого допустимого диапазона 10000–65535.
+При установке без домена используется IP-сертификат Let's Encrypt с автопродлением.
+Для выпуска и продления сертификата внешний TCP-порт 80 должен быть доступен.
+
+============================================================
+2. ГЛАВНОЕ МЕНЮ УПРАВЛЕНИЯ
+============================================================
+
+sudo 3xui-installer
+
+Короткая команда для открытия того же меню:
+
+sudo dns
+
+Менеджер автоматически проверяет и устанавливает проверенное обновление
+до открытия главного меню.
+
+Пункты меню:
+1 — установить или настроить 3X-UI;
+2 — показать настройки и данные входа;
+3 — обновить 3X-UI с сохранением клиентов;
+4 — добавить отсутствующие инбаунды в активную панель;
+5 — проверить и восстановить установку;
+6 — переустановить 3X-UI с сохранением базы;
+7 — переустановить 3X-UI без сохранения базы;
+8 — проверить и установить обновление скрипта;
+9 — полностью удалить 3X-UI;
+10 — пересоздать управляемые инбаунды в активной панели;
+11 — открыть локальную веб-страницу с данными и инструкцией;
+0 — выход.
+
+============================================================
+3. ДАННЫЕ ВХОДА И НАСТРОЙКИ
+============================================================
+
+Показать URL панели, логин, пароль, API-ключ, подписку и версии:
+
+sudo 3xui-installer settings
+
+ВНИМАНИЕ: команда выводит пароль панели и API-ключ на экран.
+
+Посмотреть сохранённый актуальный доступ:
+
+sudo cat /root/3x-ui-bootstrap/current-access.txt
+
+Обновить 3X-UI до последней стабильной версии с сохранением базы,
+клиентов, существующих инбаундов и настроек:
+
+sudo 3xui-installer panel-update
+
+После обновления актуальный доступ выводится в терминал и сохраняется:
+
+sudo cat /root/3x-ui-bootstrap/access-after-panel-update.txt
+
+Добавить только отсутствующие инбаунды в активную панель,
+не удаляя и не изменяя существующих клиентов и инбаунды:
+
+sudo 3xui-installer add-inbounds
+
+Короткий формат примечаний: Имя #1, Имя #2, Имя #3 и далее.
+
+Пересоздать только управляемые установщиком инбаунды:
+
+sudo 3xui-installer recreate-inbounds
+
+Перед удалением создаётся резервная копия. Для подтверждения требуется
+ввести RECREATE INBOUNDS. Затем команда предложит новое базовое имя
+инбаундов и формат примечаний (полный или Имя #1, Имя #2, ...).
+В режиме --non-interactive подтверждение задаётся переменной
+CONFIRM_RECREATE_INBOUNDS=RECREATE_INBOUNDS; используются сохранённые
+значения либо явно заданные XUI_INBOUND_NAME и XUI_INBOUND_REMARK_MODE.
+Пользовательские инбаунды сохраняются,
+но порты, клиенты и ссылки пересозданных профилей изменятся.
+
+Посмотреть сохранённые результаты установки:
+
+sudo ls -la /root/3x-ui-bootstrap
+
+Посмотреть итоговый отчёт:
+
+sudo less /root/3x-ui-bootstrap/summary.txt
+
+Посмотреть адреса подписок:
+
+sudo less /root/3x-ui-bootstrap/subscriptions.txt
+
+Посмотреть созданные ссылки подключений:
+
+sudo less /root/3x-ui-bootstrap/links.txt
+
+============================================================
+4. ЛОКАЛЬНАЯ ВЕБ-СТРАНИЦА
+============================================================
+
+Создать/обновить страницу и запустить её только на 127.0.0.1:
+
+sudo dns web
+
+Скрипт выведет команду SSH-туннеля. Выполните её на своём компьютере,
+например:
+
+ssh -L 8765:127.0.0.1:8765 root@IP_СЕРВЕРА
+
+После этого откройте в браузере:
+
+http://127.0.0.1:8765/
+
+Остановить локальный веб-сервер: Ctrl+C
+
+Страница содержит URL панели, логин, пароль, API-ключ, подписки,
+прямые ссылки, кнопки копирования, краткую и полную инструкцию.
+Она хранится в /root/3x-ui-bootstrap/dashboard.html с правами 600,
+не загружает внешние ресурсы и не доступна из интернета напрямую.
+
+============================================================
+5. ПРОВЕРКА И ВОССТАНОВЛЕНИЕ
+============================================================
+
+Проверить установку, восстановить отсутствующие компоненты,
+сертификат, подписку и недостающие инбаунды:
+
+sudo 3xui-installer repair
+
+Repair сохраняет существующие инбаунды и их порты.
+
+============================================================
+6. ПЕРЕУСТАНОВКА
+============================================================
+
+Переустановить файлы 3X-UI с сохранением базы и настроек:
+
+sudo 3xui-installer reinstall
+
+Перед началом потребуется подтверждение.
+
+Переустановить полностью без сохранения базы, инбаундов,
+клиентов и настроек панели:
+
+sudo 3xui-installer reinstall-clean
+
+Для подтверждения потребуется ввести DELETE DATABASE.
+После удаления старой базы откроется полный мастер чистой установки.
+
+Неинтерактивная чистая переустановка:
+
+sudo CONFIRM_CLEAN_REINSTALL=DELETE_DATABASE 3xui-installer reinstall-clean --non-interactive
+
+ВНИМАНИЕ: чистая переустановка безвозвратно удаляет всю базу 3X-UI.
+
+============================================================
+7. ПОЛНОЕ УДАЛЕНИЕ
+============================================================
+
+sudo 3xui-installer uninstall
+
+Команда удаляет 3X-UI, базу, созданные скриптом настройки,
+результаты, правила firewall и команду управления.
+Для подтверждения потребуется ввести DELETE.
+
+============================================================
+8. ПРОВЕРКА СОСТОЯНИЯ СЕРВИСА
+============================================================
+
+Текущее состояние:
+
+sudo systemctl status x-ui --no-pager
+
+Проверка, запущен ли сервис:
+
+sudo systemctl is-active x-ui
+
+Перезапуск:
+
+sudo systemctl restart x-ui
+
+Запуск:
+
+sudo systemctl start x-ui
+
+Остановка:
+
+sudo systemctl stop x-ui
+
+Включить автоматический запуск после перезагрузки:
+
+sudo systemctl enable x-ui
+
+============================================================
+9. ЛОГИ И ДИАГНОСТИКА
+============================================================
+
+Последние 100 строк системного журнала 3X-UI:
+
+sudo journalctl -u x-ui -n 100 --no-pager
+
+Следить за журналом в реальном времени:
+
+sudo journalctl -u x-ui -f
+
+Журнал установщика:
+
+sudo less /root/3x-ui-bootstrap/install.log
+
+Отчёт о неудачных инбаундах:
+
+sudo cat /root/3x-ui-bootstrap/failed-inbounds.json
+
+Проверить прослушиваемые TCP/UDP-порты:
+
+sudo ss -lntup
+
+============================================================
+10. ПРОВЕРКА СЕРТИФИКАТА И АВТОПРОДЛЕНИЯ
+============================================================
+
+Показать пути сертификата панели:
+
+sudo /usr/local/x-ui/x-ui setting -getCert
+
+Показать сертификаты, зарегистрированные в acme.sh:
+
+sudo /root/.acme.sh/acme.sh --list
+
+Проверить задания автоматического продления:
+
+sudo crontab -l | grep acme.sh
+
+Проверить доступность TCP-порта 80:
+
+sudo ss -ltn 'sport = :80'
+
+============================================================
+11. ОБНОВЛЕНИЕ КОМАНДЫ УПРАВЛЕНИЯ
+============================================================
+
+Проверить, доступна ли новая версия:
+
+sudo 3xui-installer check-update
+
+Скачать, проверить SHA-256 и установить новую версию:
+
+sudo 3xui-installer update
+
+Начиная с версии 1.5.0 команда sudo 3xui-installer автоматически
+подгружает проверенное обновление до открытия главного меню.
+
+Если на сервере установлена старая версия без команды update,
+обновить управляющую команду вручную:
+
+cd /tmp
+curl -fsSLO https://github.com/thefuckerguy/3xui-installer/releases/latest/download/install-3xui-full.sh
+curl -fsSLO https://github.com/thefuckerguy/3xui-installer/releases/latest/download/install-3xui-full.sh.sha256
+sha256sum -c install-3xui-full.sh.sha256
+
+Только после успешной проверки установить новую команду управления:
+
+sudo install -m 700 /tmp/install-3xui-full.sh /usr/local/sbin/3xui-installer
+
+Проверить версию установленного скрипта:
+
+sudo grep -m1 INSTALLER_VERSION /usr/local/sbin/3xui-installer
+
+При необходимости после обновления завершить настройку сервера:
+
+sudo 3xui-installer repair
+
+============================================================
+12. НЕИНТЕРАКТИВНЫЙ ЗАПУСК
+============================================================
+
+Запуск со стандартными безопасными значениями без вопросов:
+
+sudo bash /tmp/install-3xui-full.sh --non-interactive
+
+Показать полный журнал прямо в терминале вместо процентов:
+
+sudo QUIET_INSTALL=false bash /tmp/install-3xui-full.sh
+
+Пример собственного названия инбаундов:
+
+sudo XUI_INBOUND_NAME="Москва" bash /tmp/install-3xui-full.sh
+
+Пример изменения диапазона случайных портов:
+
+sudo XUI_PORT_START=30000 XUI_PORT_END=39999 bash /tmp/install-3xui-full.sh
+
+Пример установки с доменом:
+
+sudo XUI_DOMAIN=vpn.example.com bash /tmp/install-3xui-full.sh
+
+============================================================
+13. REMNAWAVE: PANEL, INBOUND, INTERNAL SQUAD И НОДЫ
+============================================================
+
+При запуске без аргументов скрипт спрашивает, с какой панелью
+работаем: 3X-UI или Remnawave.
+
+sudo bash /tmp/install-3xui-full.sh
+
+Явно открыть 3X-UI:
+
+sudo bash /tmp/install-3xui-full.sh --product 3x-ui
+
+Явно открыть Remnawave (companion будет скачан и проверен, если его нет рядом):
+
+sudo bash /tmp/install-3xui-full.sh --product remnawave
+
+Установить Remnawave Panel, PostgreSQL, Valkey и Caddy с TLS:
+
+sudo bash /tmp/install-3xui-full.sh --product remnawave install
+
+Неинтерактивная установка Panel + Caddy:
+
+sudo REMNAWAVE_PANEL_DOMAIN=panel.example.com \
+  bash /tmp/install-3xui-full.sh --product remnawave install --non-interactive
+
+Получить официальный Xray-шаблон для Config Profile/inbound:
+
+sudo bash /tmp/install-3xui-full.sh --product remnawave profile
+
+Автоматически создать Config Profile, inbound, Internal Squad, ноду
+и root-only Compose-бандл:
+
+sudo bash /tmp/install-3xui-full.sh --product remnawave configure
+
+Команда configure проверяет live OpenAPI, регистрирует первого
+super-admin или входит существующим, берёт JSON из каталога
+remnawave/templates, добавляет inbound в Internal Squad и записывает
+Compose с SECRET_KEY в /opt/remnawave/node-bundles с правами 600.
+
+Для неинтерактивной configure задайте REMNAWAVE_ADMIN_USERNAME,
+REMNAWAVE_ADMIN_PASSWORD, REMNAWAVE_PROFILE_NAME, REMNAWAVE_NODE_NAME,
+REMNAWAVE_NODE_ADDRESS, REMNAWAVE_NODE_PORT и, при необходимости,
+REMNAWAVE_TEMPLATE_NUMBER.
+
+Инструкция по добавлению ноды:
+
+sudo bash /tmp/install-3xui-full.sh --product remnawave node-guide
+
+На сервере ноды установить Compose-бандл, созданный командой configure:
+
+sudo REMNAWAVE_PANEL_SOURCE_CIDR=PANEL_IP/32 \
+  bash /tmp/remnawave-manager.sh node-install /root/remnanode-compose.yml
+
+После configure назначьте пользователей созданному Internal Squad.
+Node Port должен быть доступен только с IP/CIDR панели. JWT и SECRET_KEY
+не выводятся в терминал.
+
+Показать статус Remnawave:
+
+sudo bash /tmp/install-3xui-full.sh --product remnawave status
+
+Обновить контейнеры Panel и Caddy:
+
+sudo bash /tmp/install-3xui-full.sh --product remnawave update
+
+============================================================
+ВАЖНО
+============================================================
+
+- Не публикуйте файл /root/3x-ui-bootstrap/result.env: в нём находятся секреты.
+- Не публикуйте /opt/remnawave/.env и файлы из /opt/remnawave/node-bundles.
+- Перед удалением или переустановкой сохраните важные клиентские конфигурации.
+- Repair не должен менять существующие порты и инбаунды.
+- Полное удаление необратимо без резервной копии.
